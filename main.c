@@ -115,7 +115,7 @@ APP_TIMER_DEF(m_poll_timer);
 APP_TIMER_DEF(m_bindconfirm_timer);
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
-
+static int m_evt_times;
 /* YOUR_JOB: Declare all services structure your application is using
  *  BLE_XYZ_DEF(m_xyz);
  */
@@ -125,6 +125,8 @@ static void advertising_init(bool need_bind_confirm);
 static void advertising_start(void);
 static void poll_timer_handler(void * p_context);
 static void bind_confirm_timeout(void * p_context);
+static void ble_lock_ops_handler(uint8_t opcode);
+
 /**@brief Callback function for asserts in the SoftDevice.
  *
  * @details This function will be called in case of an assert in the SoftDevice.
@@ -352,8 +354,9 @@ static void application_timers_start(void)
        ret_code_t err_code;
        err_code = app_timer_start(m_app_timer_id, TIMER_INTERVAL, NULL);
        APP_ERROR_CHECK(err_code); */
-    ret_code_t err_code = app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
-    MI_ERR_CHECK(err_code);
+
+//    ret_code_t err_code = app_timer_start(m_poll_timer, APP_TIMER_TICKS(10000), NULL);
+//    MI_ERR_CHECK(err_code);
 }
 
 
@@ -475,6 +478,7 @@ static void ble_stack_init(void)
  */
 static void bsp_event_handler(bsp_event_t event)
 {
+    static uint8_t lock_stat = 0;
     ret_code_t err_code;
 
     switch (event)
@@ -503,7 +507,23 @@ static void bsp_event_handler(bsp_event_t event)
             break;
 
         case BSP_EVENT_KEY_1:
-            mi_scheduler_start(SYS_MSC_SELF_TEST);
+//            mi_scheduler_start(SYS_MSC_SELF_TEST);
+
+            ble_lock_ops_handler(lock_stat);
+            lock_stat ^= 1;
+            break;
+
+        case BSP_EVENT_KEY_0:
+            bsp_board_led_on(0);
+            MI_LOG_DEBUG("Enter lock event test mode: adv new event every 10s, keep adv 3s with interval 100 ms.\n");
+            app_timer_start(m_poll_timer, APP_TIMER_TICKS(10000), NULL);
+            break;
+
+        case BSP_EVENT_CLEAR_ALERT:
+            bsp_board_led_off(0);
+            m_evt_times = 0;
+            MI_LOG_DEBUG("Exit lock event test mode.\n");
+            app_timer_stop(m_poll_timer);
             break;
 
         default:
@@ -519,7 +539,7 @@ static void advertising_init(bool need_bind_confirm)
     MI_LOG_INFO("advertising init...\n");
 	mibeacon_frame_ctrl_t frame_ctrl = {
 		.secure_auth    = 1,
-		.version        = 4,
+		.version        = 5,
         .bond_confirm   = need_bind_confirm,
 	};
 
@@ -578,6 +598,17 @@ static void buttons_leds_init(bool * p_erase_bonds)
 //    APP_ERROR_CHECK(err_code);
 
 //    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+
+    err_code = bsp_event_to_button_action_assign(0,
+											 BSP_BUTTON_ACTION_PUSH,
+											 BSP_EVENT_KEY_0);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = bsp_event_to_button_action_assign(0,
+											 BSP_BUTTON_ACTION_LONG_PUSH,
+											 BSP_EVENT_CLEAR_ALERT);
+    APP_ERROR_CHECK(err_code);
+
 
 	/* assign BUTTON 2 to initate MSC_SELF_TEST, for more details to check bsp_event_handler()*/
     err_code = bsp_event_to_button_action_assign(1,
@@ -639,8 +670,8 @@ static void advertising_start(void)
 {
 	mible_gap_adv_param_t adv_param =(mible_gap_adv_param_t){
 		.adv_type = MIBLE_ADV_TYPE_CONNECTABLE_UNDIRECTED, 
-		.adv_interval_min = MSEC_TO_UNITS(200, UNIT_0_625_MS),
-		.adv_interval_max = MSEC_TO_UNITS(300, UNIT_0_625_MS),
+		.adv_interval_min = MSEC_TO_UNITS(100, UNIT_0_625_MS),
+		.adv_interval_max = MSEC_TO_UNITS(100, UNIT_0_625_MS),
 	};
     uint32_t err_code = mible_gap_adv_start(&adv_param);
     if(MI_SUCCESS != err_code){
@@ -659,9 +690,13 @@ static void bind_confirm_timeout(void * p_context)
 static void poll_timer_handler(void * p_context)
 {
 	time_t utc_time = time(NULL);
-	MI_LOG_INFO("%s", ctime(&utc_time));
+	MI_LOG_INFO("The %d th event sent, %s", ++m_evt_times, ctime(&utc_time));
+    ble_lock_ops_handler(0);
+    
+    if (m_evt_times == 1000)
+        app_timer_stop(m_poll_timer);
 
-//	uint8_t battery_stat = 0xA6;
+//	uint8_t battery_stat = 100;
 //	mibeacon_obj_enque(MI_STA_BATTERY, sizeof(battery_stat), &battery_stat);
 
 }
@@ -796,13 +831,13 @@ int main(void)
     };
 
 	/* <!> mi_scheduler_init() must be called after ble_stack_init(). */
-    mi_sevice_init();
+    mi_service_init();
 	mi_scheduler_init(10, mi_schd_event_handler, &config);
     mi_scheduler_start(SYS_KEY_RESTORE);
 
     lock_init_t lock_config;
     lock_config.opcode_handler = ble_lock_ops_handler;
-    lock_sevice_init(&lock_config);
+    lock_service_init(&lock_config);
 
     // Start execution.
     application_timers_start();
