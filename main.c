@@ -115,7 +115,8 @@ APP_TIMER_DEF(m_poll_timer);
 APP_TIMER_DEF(m_bindconfirm_timer);
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
-static int m_evt_times;
+static int m_curr_times;
+static int m_max_times;
 /* YOUR_JOB: Declare all services structure your application is using
  *  BLE_XYZ_DEF(m_xyz);
  */
@@ -515,13 +516,21 @@ static void bsp_event_handler(bsp_event_t event)
 
         case BSP_EVENT_KEY_0:
             bsp_board_led_on(0);
-            MI_LOG_DEBUG("Enter lock event test mode: adv new event every 10s, keep adv 3s with interval 100 ms.\n");
-            app_timer_start(m_poll_timer, APP_TIMER_TICKS(10000), NULL);
+            m_max_times = 1000;
+            MI_LOG_DEBUG("Enter lock event test mode (1K): adv new event every 5s, keep adv 3s with interval 100 ms.\n");
+            app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
+            break;
+
+        case BSP_EVENT_KEY_3:
+            bsp_board_led_on(0);
+            m_max_times = 200;
+            MI_LOG_DEBUG("Enter lock event test mode (200): adv new event every 5s, keep adv 3s with interval 100 ms.\n");
+            app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
             break;
 
         case BSP_EVENT_CLEAR_ALERT:
             bsp_board_led_off(0);
-            m_evt_times = 0;
+            m_curr_times = 0;
             MI_LOG_DEBUG("Exit lock event test mode.\n");
             app_timer_stop(m_poll_timer);
             break;
@@ -539,7 +548,7 @@ static void advertising_init(bool need_bind_confirm)
     MI_LOG_INFO("advertising init...\n");
 	mibeacon_frame_ctrl_t frame_ctrl = {
 		.secure_auth    = 1,
-		.version        = 5,
+		.version        = 4,
         .bond_confirm   = need_bind_confirm,
 	};
 
@@ -624,8 +633,8 @@ static void buttons_leds_init(bool * p_erase_bonds)
 
 	/* assign BUTTON 4 to set the bind confirm bit in mibeacon, for more details to check bsp_event_handler()*/
     err_code = bsp_event_to_button_action_assign(3,
-											 BSP_BUTTON_ACTION_LONG_PUSH,
-											 BSP_EVENT_BOND);
+											 BSP_BUTTON_ACTION_PUSH,
+											 BSP_EVENT_KEY_3);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -690,10 +699,10 @@ static void bind_confirm_timeout(void * p_context)
 static void poll_timer_handler(void * p_context)
 {
 	time_t utc_time = time(NULL);
-	MI_LOG_INFO("The %d th event sent, %s", ++m_evt_times, ctime(&utc_time));
+	MI_LOG_INFO("The %d th event sent, %s", ++m_curr_times, ctime(&utc_time));
     ble_lock_ops_handler(0);
     
-    if (m_evt_times == 1000)
+    if (m_curr_times == m_max_times)
         app_timer_stop(m_poll_timer);
 
 //	uint8_t battery_stat = 100;
