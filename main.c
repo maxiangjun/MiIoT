@@ -361,29 +361,6 @@ static void application_timers_start(void)
 }
 
 
-/**@brief Function for putting the chip into sleep mode.
- *
- * @note This function will not return.
- */
-static void sleep_mode_enter(void)
-{
-    ret_code_t err_code;
-
-    err_code = bsp_indication_set(BSP_INDICATE_IDLE);
-    APP_ERROR_CHECK(err_code);
-
-    // Prepare wakeup buttons.
-    err_code = bsp_btn_ble_sleep_mode_prepare();
-    APP_ERROR_CHECK(err_code);
-
-    // Go to system-off mode (this function will not return; wakeup will cause a reset).
-    err_code = sd_power_system_off();
-    APP_ERROR_CHECK(err_code);
-}
-
-
-
-
 /**@brief Function for handling BLE events.
  *
  * @param[in]   p_ble_evt   Bluetooth stack event.
@@ -484,10 +461,6 @@ static void bsp_event_handler(bsp_event_t event)
 
     switch (event)
     {
-        case BSP_EVENT_SLEEP:
-            sleep_mode_enter();
-            break; // BSP_EVENT_SLEEP
-
         case BSP_EVENT_DISCONNECT:
             err_code = sd_ble_gap_disconnect(m_conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
@@ -508,29 +481,38 @@ static void bsp_event_handler(bsp_event_t event)
             break;
 
         case BSP_EVENT_KEY_1:
-//            mi_scheduler_start(SYS_MSC_SELF_TEST);
-
-            ble_lock_ops_handler(lock_stat);
-            lock_stat ^= 1;
+            if (get_mi_reg_stat()) {
+                ble_lock_ops_handler(lock_stat);
+                lock_stat ^= 1;
+            } else {
+                mi_scheduler_start(SYS_MSC_SELF_TEST);
+            }
             break;
 
         case BSP_EVENT_KEY_0:
-            bsp_board_led_on(0);
-            m_max_times = 1000;
-            MI_LOG_DEBUG("Enter lock event test mode (1K): adv new event every 5s, keep adv 3s with interval 100 ms.\n");
-            app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
+            if (get_mi_reg_stat()) {
+                bsp_board_led_on(0);
+                m_curr_times = 0;
+                m_max_times  = 1000;
+                MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 3s with interval 100 ms.\n", m_max_times);
+                app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
+            } else {
+                advertising_init(1);
+                err_code = app_timer_start(m_bindconfirm_timer, APP_TIMER_TICKS(5000), NULL);
+                MI_ERR_CHECK(err_code);
+            }
             break;
 
         case BSP_EVENT_KEY_3:
             bsp_board_led_on(0);
-            m_max_times = 200;
-            MI_LOG_DEBUG("Enter lock event test mode (200): adv new event every 5s, keep adv 3s with interval 100 ms.\n");
+            m_curr_times = 0;
+            m_max_times  = 10000;
+            MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 3s with interval 100 ms.\n", m_max_times);
             app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
             break;
 
         case BSP_EVENT_CLEAR_ALERT:
             bsp_board_led_off(0);
-            m_curr_times = 0;
             MI_LOG_DEBUG("Exit lock event test mode.\n");
             app_timer_stop(m_poll_timer);
             break;
@@ -571,6 +553,11 @@ static void advertising_init(bool need_bind_confirm)
 	uint8_t adv_data[31];
     uint8_t adv_len;
 
+    if (get_mi_reg_stat()) {
+        mibeacon_cfg.frame_ctrl.version = 4;
+        mibeacon_cfg.p_cap_sub_IO = 0;
+    }
+
     // ADV Struct: Flags: LE General Discoverable Mode + BR/EDR Not supported.
 	adv_data[0] = 0x02;
 	adv_data[1] = 0x01;
@@ -598,7 +585,7 @@ static void advertising_init(bool need_bind_confirm)
 static void buttons_leds_init(bool * p_erase_bonds)
 {
     ret_code_t err_code;
-    bsp_event_t startup_event;
+//    bsp_event_t startup_event;
 
     err_code = bsp_init(BSP_INIT_LEDS | BSP_INIT_BUTTONS, bsp_event_handler);
     APP_ERROR_CHECK(err_code);
@@ -702,9 +689,10 @@ static void poll_timer_handler(void * p_context)
 	MI_LOG_INFO("The %d th event sent, %s", ++m_curr_times, ctime(&utc_time));
     ble_lock_ops_handler(0);
     
-    if (m_curr_times == m_max_times)
+    if (m_curr_times > m_max_times) {
         app_timer_stop(m_poll_timer);
-
+        m_curr_times = 0;
+    }
 //	uint8_t battery_stat = 100;
 //	mibeacon_obj_enque(MI_STA_BATTERY, sizeof(battery_stat), &battery_stat);
 
@@ -760,7 +748,7 @@ const iic_config_t iic_config = {
 const iic_config_t iic_config = {
         .scl_pin  = 24,
         .sda_pin  = 25,
-        .freq = IIC_100K
+        .freq = IIC_400K
 };
 #endif
 
