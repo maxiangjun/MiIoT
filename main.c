@@ -485,6 +485,7 @@ static void bsp_event_handler(bsp_event_t event)
                 ble_lock_ops_handler(lock_stat);
                 lock_stat ^= 1;
             } else {
+                MI_LOG_INFO("start msc self test\n");
                 mi_scheduler_start(SYS_MSC_SELF_TEST);
             }
             break;
@@ -504,11 +505,16 @@ static void bsp_event_handler(bsp_event_t event)
             break;
 
         case BSP_EVENT_KEY_3:
-            bsp_board_led_on(0);
-            m_curr_times = 0;
-            m_max_times  = 10000;
-            MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 3s with interval 100 ms.\n", m_max_times);
-            app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
+            if (get_mi_reg_stat()) {
+                bsp_board_led_on(0);
+                m_curr_times = 0;
+                m_max_times  = 10000;
+                MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 3s with interval 100 ms.\n", m_max_times);
+                app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
+            } else {
+                sd_ble_gap_disconnect(0, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+            }
+
             break;
 
         case BSP_EVENT_CLEAR_ALERT:
@@ -748,7 +754,7 @@ const iic_config_t iic_config = {
 const iic_config_t iic_config = {
         .scl_pin  = 24,
         .sda_pin  = 25,
-        .freq = IIC_400K
+        .freq = IIC_100K
 };
 #endif
 
