@@ -495,7 +495,7 @@ static void bsp_event_handler(bsp_event_t event)
                 bsp_board_led_on(0);
                 m_curr_times = 0;
                 m_max_times  = 1000;
-                MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 3s with interval 100 ms.\n", m_max_times);
+                MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 2s with interval 100 ms.\n", m_max_times);
                 app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
             } else {
                 advertising_init(1);
@@ -509,7 +509,7 @@ static void bsp_event_handler(bsp_event_t event)
                 bsp_board_led_on(0);
                 m_curr_times = 0;
                 m_max_times  = 10000;
-                MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 3s with interval 100 ms.\n", m_max_times);
+                MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 2s with interval 100 ms.\n", m_max_times);
                 app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
             } else {
                 sd_ble_gap_disconnect(0, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
