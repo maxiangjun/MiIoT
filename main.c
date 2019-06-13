@@ -471,6 +471,7 @@ static void bsp_event_handler(bsp_event_t event)
             break; // BSP_EVENT_DISCONNECT
 
 		case BSP_EVENT_RESET:
+            advertising_init(0);
 			mi_scheduler_start(SYS_KEY_DELETE);
             break;
 
@@ -494,7 +495,7 @@ static void bsp_event_handler(bsp_event_t event)
             if (get_mi_reg_stat()) {
                 bsp_board_led_on(0);
                 m_curr_times = 0;
-                m_max_times  = 1000;
+                m_max_times  = 100;
                 MI_LOG_DEBUG("Enter lock event test mode (%d): adv new event every 5s, keep adv 2s with interval 100 ms.\n", m_max_times);
                 app_timer_start(m_poll_timer, APP_TIMER_TICKS(5000), NULL);
             } else {
@@ -536,7 +537,7 @@ static void advertising_init(bool need_bind_confirm)
     MI_LOG_INFO("advertising init...\n");
 	mibeacon_frame_ctrl_t frame_ctrl = {
 		.secure_auth    = 1,
-		.version        = 4,
+		.version        = 5,
         .bond_confirm   = need_bind_confirm,
 	};
 
